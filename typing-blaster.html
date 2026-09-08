@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>Word Blaster — Typing Speed Trainer</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600;700&display=swap');
+
+:root{
+  --bg-deep:#0a0e1a;
+  --bg-mid:#121a2e;
+  --panel:#151d33;
+  --panel-edge:#232e4d;
+  --text:#e7ecf7;
+  --text-dim:#8a93ad;
+  --cyan:#5eead4;
+  --cyan-dim:#2f6f66;
+  --amber:#f5b942;
+  --magenta:#f472b6;
+  --danger:#f16565;
+}
+
+*{box-sizing:border-box; margin:0; padding:0;}
+
+html,body{
+  height:100%;
+  background:var(--bg-deep);
+  font-family:'Space Grotesk', sans-serif;
+  color:var(--text);
+  overflow:hidden;
+  -webkit-user-select:none;
+  user-select:none;
+}
+
+#stars{
+  position:fixed; inset:0;
+  background:
+    radial-gradient(1px 1px at 15% 25%, rgba(255,255,255,.6), transparent),
+    radial-gradient(1px 1px at 65% 10%, rgba(255,255,255,.4), transparent),
+    radial-gradient(2px 2px at 80% 60%, rgba(255,255,255,.5), transparent),
+    radial-gradient(1px 1px at 40% 80%, rgba(255,255,255,.4), transparent),
+    radial-gradient(1px 1px at 90% 35%, rgba(255,255,255,.5), transparent),
+    radial-gradient(1px 1px at 25% 55%, rgba(255,255,255,.3), transparent),
+    radial-gradient(1px 1px at 55% 45%, rgba(255,255,255,.35), transparent);
+  background-size: 800px 800px;
+  opacity:.8;
+  z-index:0;
+}
+
+#glow{
+  position:fixed; inset:0;
+  background: radial-gradient(ellipse 60% 40% at 50% 100%, rgba(94,234,212,.10), transparent 70%),
+              radial-gradient(ellipse 40% 30% at 20% 0%, rgba(244,114,182,.08), transparent 70%);
+  z-index:0;
+}
+
+#app{
+  position:relative;
+  z-index:1;
+  height:100vh;
+  display:flex;
+  flex-direction:column;
+}
+
+/* ---------- HUD ---------- */
+#hud{
+  display:flex;
+  align-items:center;
+  gap:22px;
+  padding:12px 20px;
+  background:linear-gradient(180deg, rgba(18,26,46,.9), rgba(18,26,46,.5));
+  border-bottom:1px solid var(--panel-edge);
+  font-family:'IBM Plex Mono', monospace;
+  font-size:13px;
+  color:var(--text-dim);
+  flex-shrink:0;
+}
+#hud .stat{display:flex; flex-direction:column; gap:1px; min-width:52px;}
+#hud .stat b{font-size:17px; color:var(--text); font-weight:600; letter-spacing:.3px;}
+#hud .lives{display:flex; gap:4px; align-items:center;}
+.heart{width:11px; height:11px; background:var(--danger); clip-path:polygon(50% 100%, 10% 55%, 10% 25%, 30% 5%, 50% 25%, 70% 5%, 90% 25%, 90% 55%); transition:opacity .2s;}
+.heart.lost{opacity:.15;}
+#hud .spacer{flex:1;}
+#difficulty-badge{
+  font-size:11px; padding:4px 10px; border-radius:3px;
+  letter-spacing:.5px; font-weight:600; text-transform:uppercase;
+  border:1px solid var(--panel-edge);
+}
+#difficulty-badge.easy{color:var(--cyan); border-color:var(--cyan-dim);}
+#difficulty-badge.medium{color:var(--amber); border-color:#7a5f22;}
+#difficulty-badge.hard{color:var(--magenta); border-color:#7a3c5f;}
+
+/* ---------- Play field ---------- */
+#field{
+  position:relative;
+  flex:1;
+  overflow:hidden;
+}
+
+.word{
+  position:absolute;
+  font-family:'IBM Plex Mono', monospace;
+  font-size:20px;
+  font-weight:600;
+  letter-spacing:1px;
+  white-space:nowrap;
+  padding:5px 10px;
+  border-radius:4px;
+  background:rgba(21,29,51,.7);
+  border:1px solid var(--panel-edge);
+  color:var(--text-dim);
+  transform:translateX(-50%);
+  transition:border-color .15s, box-shadow .15s;
+}
+.word .matched{color:var(--cyan); text-shadow:0 0 8px rgba(94,234,212,.6);}
+.word.targeted{
+  border-color:var(--cyan-dim);
+  box-shadow:0 0 14px rgba(94,234,212,.15);
+}
+.word.exploding{
+  animation:pop .22s ease-out forwards;
+}
+@keyframes pop{
+  0%{transform:translateX(-50%) scale(1); opacity:1;}
+  100%{transform:translateX(-50%) scale(1.6); opacity:0;}
+}
+
+.beam{
+  position:absolute;
+  bottom:0;
+  width:2px;
+  background:linear-gradient(180deg, var(--cyan), transparent);
+  box-shadow:0 0 8px var(--cyan);
+  transform-origin:bottom center;
+  pointer-events:none;
+  animation:beamFade .18s ease-out forwards;
+}
+@keyframes beamFade{
+  0%{opacity:1;}
+  100%{opacity:0;}
+}
+
+#ship{
+  position:absolute;
+  bottom:14px;
+  left:50%;
+  width:0; height:0;
+  border-left:13px solid transparent;
+  border-right:13px solid transparent;
+  border-bottom:26px solid var(--cyan);
+  filter:drop-shadow(0 0 8px rgba(94,234,212,.5));
+  transition:left .12s ease-out;
+  z-index:2;
+}
+#ship::after{
+  content:'';
+  position:absolute;
+  top:26px; left:-4px;
+  width:8px; height:8px;
+  background:var(--amber);
+  border-radius:50%;
+  box-shadow:0 0 6px var(--amber);
+}
+
+.floor-line{
+  position:absolute;
+  bottom:8px; left:0; right:0;
+  height:1px;
+  background:linear-gradient(90deg, transparent, var(--panel-edge) 20%, var(--panel-edge) 80%, transparent);
+}
+
+/* ---------- Typing buffer strip ---------- */
+#buffer-strip{
+  position:absolute;
+  bottom:48px; left:50%; transform:translateX(-50%);
+  font-family:'IBM Plex Mono', monospace;
+  font-size:15px;
+  color:var(--cyan);
+  min-height:20px;
+  letter-spacing:2px;
+  opacity:.85;
+}
+
+#mobile-input{
+  position:absolute;
+  bottom:6px; left:50%;
+  transform:translateX(-50%);
+  width:60px; height:20px;
+  opacity:0;
+  border:none;
+  outline:none;
+  font-size:16px; /* prevents iOS auto-zoom */
+  background:transparent;
+  color:transparent;
+  caret-color:transparent;
+  z-index:3;
+}
+
+#tap-hint{
+  position:absolute;
+  bottom:44px; left:50%; transform:translateX(-50%);
+  font-family:'IBM Plex Mono', monospace;
+  font-size:12px;
+  letter-spacing:.5px;
+  color:var(--text-dim);
+  background:rgba(21,29,51,.85);
+  border:1px solid var(--panel-edge);
+  padding:5px 12px;
+  border-radius:5px;
+  pointer-events:none;
+  z-index:3;
+  animation:hintPulse 1.6s ease-in-out infinite;
+}
+#tap-hint.hidden{display:none;}
+@keyframes hintPulse{
+  0%,100%{opacity:.6;}
+  50%{opacity:1;}
+}
+
+/* ---------- Keyboard hints ---------- */
+#keyboard{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:6px;
+  padding:14px 10px 18px;
+  background:rgba(10,14,26,.6);
+  border-top:1px solid var(--panel-edge);
+  flex-shrink:0;
+}
+.krow{display:flex; gap:6px;}
+.key{
+  width:34px; height:34px;
+  border:1px solid var(--panel-edge);
+  border-radius:5px;
+  display:flex; align-items:center; justify-content:center;
+  font-family:'IBM Plex Mono', monospace;
+  font-size:13px;
+  color:var(--text-dim);
+  background:var(--panel);
+  transition:all .1s;
+}
+.key.next{
+  background:var(--cyan);
+  color:#0a0e1a;
+  border-color:var(--cyan);
+  box-shadow:0 0 14px rgba(94,234,212,.5);
+  transform:translateY(-2px);
+}
+.key.pressed{
+  animation:keyPress .18s ease-out;
+}
+.key.pressed-bad{
+  animation:keyPressBad .18s ease-out;
+}
+@keyframes keyPress{
+  0%{background:var(--cyan); color:#0a0e1a; border-color:var(--cyan); transform:scale(1.3); box-shadow:0 0 20px rgba(94,234,212,.9);}
+  100%{background:var(--panel); color:var(--text-dim); border-color:var(--panel-edge); transform:scale(1); box-shadow:none;}
+}
+@keyframes keyPressBad{
+  0%{background:var(--danger); color:#fff; border-color:var(--danger); transform:scale(1.3); box-shadow:0 0 20px rgba(241,101,101,.9);}
+  100%{background:var(--panel); color:var(--text-dim); border-color:var(--panel-edge); transform:scale(1); box-shadow:none;}
+}
+#keyboard.hidden{display:none;}
+
+/* ---------- Overlays (start / end) ---------- */
+.overlay{
+  position:absolute; inset:0;
+  z-index:5;
+  display:flex; align-items:center; justify-content:center;
+  background:rgba(8,11,20,.72);
+  backdrop-filter:blur(3px);
+}
+.overlay.hidden{display:none;}
+.card{
+  background:var(--panel);
+  border:1px solid var(--panel-edge);
+  border-radius:10px;
+  padding:38px 42px;
+  max-width:440px;
+  width:90%;
+  text-align:center;
+}
+.card h1{
+  font-size:26px;
+  font-weight:700;
+  letter-spacing:.5px;
+  margin-bottom:8px;
+}
+.card h1 span{color:var(--cyan);}
+.card p.sub{
+  color:var(--text-dim);
+  font-size:14px;
+  line-height:1.55;
+  margin-bottom:26px;
+}
+.diff-row{
+  display:flex;
+  gap:10px;
+  margin-bottom:20px;
+}
+.diff-btn{
+  flex:1;
+  padding:14px 8px;
+  background:var(--bg-mid);
+  border:1px solid var(--panel-edge);
+  border-radius:7px;
+  color:var(--text);
+  font-family:'Space Grotesk', sans-serif;
+  font-weight:600;
+  font-size:14px;
+  cursor:pointer;
+  transition:all .15s;
+}
+.diff-btn small{display:block; font-weight:500; color:var(--text-dim); font-size:11px; margin-top:3px;}
+.diff-btn:hover{transform:translateY(-2px);}
+.diff-btn[data-diff="easy"]:hover, .diff-btn[data-diff="easy"].selected{border-color:var(--cyan); box-shadow:0 0 16px rgba(94,234,212,.2);}
+.diff-btn[data-diff="medium"]:hover, .diff-btn[data-diff="medium"].selected{border-color:var(--amber); box-shadow:0 0 16px rgba(245,185,66,.2);}
+.diff-btn[data-diff="hard"]:hover, .diff-btn[data-diff="hard"].selected{border-color:var(--magenta); box-shadow:0 0 16px rgba(244,114,182,.2);}
+
+.toggle-row{
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  margin-bottom:22px;
+  font-size:13px;
+  color:var(--text-dim);
+}
+.toggle-row input{accent-color:var(--cyan);}
+
+.go-btn{
+  width:100%;
+  padding:13px;
+  background:var(--cyan);
+  color:#0a0e1a;
+  border:none;
+  border-radius:7px;
+  font-family:'Space Grotesk', sans-serif;
+  font-weight:700;
+  font-size:15px;
+  letter-spacing:.3px;
+  cursor:pointer;
+  transition:filter .15s;
+}
+.go-btn:hover{filter:brightness(1.1);}
+
+.results-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:14px;
+  margin-bottom:24px;
+}
+.result-cell{
+  background:var(--bg-mid);
+  border:1px solid var(--panel-edge);
+  border-radius:7px;
+  padding:14px 10px;
+}
+.result-cell .num{font-family:'IBM Plex Mono', monospace; font-size:24px; font-weight:600; color:var(--cyan);}
+.result-cell .lbl{font-size:11px; color:var(--text-dim); margin-top:2px; text-transform:uppercase; letter-spacing:.5px;}
+
+@media (max-width:480px){
+  .word{font-size:16px; padding:4px 7px;}
+  #hud{gap:12px; font-size:11px; padding:10px 12px;}
+  .key{width:26px; height:26px; font-size:11px;}
+}
+</style>
+</head>
+<body>
+
+<div id="stars"></div>
+<div id="glow"></div>
+
+<div id="app">
+
+  <div id="hud">
+    <div class="stat">SCORE<b id="stat-score">0</b></div>
+    <div class="stat">WPM<b id="stat-wpm">0</b></div>
+    <div class="stat">ACCURACY<b id="stat-acc">100%</b></div>
+    <div class="stat">LEVEL<b id="stat-level">1</b></div>
+    <div class="stat">LIVES
+      <div class="lives" id="lives-row">
+        <div class="heart"></div><div class="heart"></div><div class="heart"></div><div class="heart"></div><div class="heart"></div>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div id="difficulty-badge" class="easy">Easy</div>
+  </div>
+
+  <div id="field">
+    <div class="floor-line"></div>
+    <div id="ship"></div>
+    <div id="buffer-strip"></div>
+    <div id="tap-hint" class="hidden">tap here to type</div>
+    <input id="mobile-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="text">
+  </div>
+
+  <div id="keyboard"></div>
+
+  <!-- START OVERLAY -->
+  <div class="overlay" id="start-overlay">
+    <div class="card">
+      <h1>Word <span>Blaster</span></h1>
+      <p class="sub">Words fall from above — type them exactly to shoot them down before they land. Miss three and it's game over. Pick a difficulty and try not to look at your keyboard.</p>
+      <div class="diff-row">
+        <button class="diff-btn selected" data-diff="easy">Easy<small>short words</small></button>
+        <button class="diff-btn" data-diff="medium">Medium<small>everyday words</small></button>
+        <button class="diff-btn" data-diff="hard">Hard<small>long &amp; fast</small></button>
+      </div>
+      <label class="toggle-row"><input type="checkbox" id="hint-toggle" checked> Show keyboard hints (turn off once you're confident)</label>
+      <button class="go-btn" id="start-btn">Start game</button>
+    </div>
+  </div>
+
+  <!-- GAME OVER OVERLAY -->
+  <div class="overlay hidden" id="end-overlay">
+    <div class="card">
+      <h1>Game <span>Over</span></h1>
+      <p class="sub" id="end-sub">Here's how you did.</p>
+      <div class="results-grid">
+        <div class="result-cell"><div class="num" id="end-score">0</div><div class="lbl">Words shot</div></div>
+        <div class="result-cell"><div class="num" id="end-wpm">0</div><div class="lbl">Avg WPM</div></div>
+        <div class="result-cell"><div class="num" id="end-acc">0%</div><div class="lbl">Accuracy</div></div>
+        <div class="result-cell"><div class="num" id="end-level">1</div><div class="lbl">Level reached</div></div>
+      </div>
+      <button class="go-btn" id="retry-btn">Play again</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+
+const WORDS = {
+  easy: ["cat","dog","sun","run","big","red","sit","fun","top","box","cup","pen","map","bus","hat","jam",
+         "key","log","mud","net","owl","pit","rug","tea","van","web","arm","bed","fish","bird","tree","book",
+         "lamp","door","milk","rain","snow","star","moon","wind","leaf","fire","gold","blue","gray","pink"],
+  medium: ["apple","table","chair","mouse","plant","bread","cloud","river","stone","tiger","house","water",
+            "light","sound","dream","quiet","brave","magic","pearl","storm","garden","yellow","purple","forest",
+            "castle","bridge","pencil","window","rocket","planet","bottle","engine","guitar","jungle","market"],
+  hard: ["keyboard","elephant","mountain","sandwich","umbrella","adventure","chocolate","butterfly","dangerous",
+          "wonderful","knowledge","telephone","algorithm","xylophone","chemistry","satellite","dictionary",
+          "waterfall","celebrate","triangle","volunteer","fireworks","microphone","atmosphere","basketball"]
+};
+
+const DIFFICULTY = {
+  easy:   {fallTime: 9000, spawnGap: 1900, list: WORDS.easy,   speedGrowth: 0.06},
+  medium: {fallTime: 7200, spawnGap: 1500, list: WORDS.medium, speedGrowth: 0.08},
+  hard:   {fallTime: 5600, spawnGap: 1150, list: WORDS.hard,   speedGrowth: 0.10}
+};
+
+const KB_ROWS = ["qwertyuiop","asdfghjkl","zxcvbnm"];
+
+let state = null;
+let animHandle = null;
+let spawnHandle = null;
+let clockHandle = null;
+
+const field = document.getElementById('field');
+const ship = document.getElementById('ship');
+const bufferStrip = document.getElementById('buffer-strip');
+const livesRow = document.getElementById('lives-row');
+const statScore = document.getElementById('stat-score');
+const statWpm = document.getElementById('stat-wpm');
+const statAcc = document.getElementById('stat-acc');
+const statLevel = document.getElementById('stat-level');
+const badge = document.getElementById('difficulty-badge');
+const keyboardEl = document.getElementById('keyboard');
+const startOverlay = document.getElementById('start-overlay');
+const endOverlay = document.getElementById('end-overlay');
+const mobileInput = document.getElementById('mobile-input');
+const tapHint = document.getElementById('tap-hint');
+
+function focusTypingInput(){
+  if(state && state.running){
+    mobileInput.focus({preventScroll:true});
+  }
+}
+field.addEventListener('touchstart', focusTypingInput, {passive:true});
+field.addEventListener('mousedown', focusTypingInput);
+mobileInput.addEventListener('blur', ()=>{
+  if(state && state.running) tapHint.classList.remove('hidden');
+});
+mobileInput.addEventListener('focus', ()=>{
+  tapHint.classList.add('hidden');
+});
+mobileInput.addEventListener('input', (e)=>{
+  if(!state || !state.running){ mobileInput.value=''; return; }
+  const inputType = e.inputType || '';
+  if(inputType.indexOf('delete') === 0){
+    handleBackspace();
+  } else if(mobileInput.value){
+    for(const ch of mobileInput.value){
+      if(/[a-zA-Z]/.test(ch)) handleChar(ch.toLowerCase());
+    }
+  }
+  mobileInput.value = '';
+});
+
+let selectedDiff = 'easy';
+let hintsOn = true;
+
+document.querySelectorAll('.diff-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.diff-btn').forEach(b=>b.classList.remove('selected'));
+    btn.classList.add('selected');
+    selectedDiff = btn.dataset.diff;
+  });
+});
+
+document.getElementById('hint-toggle').addEventListener('change', e=>{
+  hintsOn = e.target.checked;
+});
+
+document.getElementById('start-btn').addEventListener('click', ()=> startGame(selectedDiff, hintsOn));
+document.getElementById('retry-btn').addEventListener('click', ()=>{
+  endOverlay.classList.add('hidden');
+  startOverlay.classList.remove('hidden');
+});
+
+function buildKeyboard(){
+  keyboardEl.innerHTML = '';
+  KB_ROWS.forEach(row=>{
+    const rowEl = document.createElement('div');
+    rowEl.className = 'krow';
+    row.split('').forEach(ch=>{
+      const k = document.createElement('div');
+      k.className = 'key';
+      k.dataset.key = ch;
+      k.textContent = ch.toUpperCase();
+      rowEl.appendChild(k);
+    });
+    keyboardEl.appendChild(rowEl);
+  });
+}
+buildKeyboard();
+
+function setKeyboardHint(nextChar){
+  document.querySelectorAll('.key').forEach(k=>{
+    k.classList.toggle('next', nextChar && k.dataset.key === nextChar.toLowerCase());
+  });
+}
+
+function flashKey(ch, correct){
+  const keyEl = keyboardEl.querySelector('.key[data-key="'+ch+'"]');
+  if(!keyEl) return;
+  keyEl.classList.remove('pressed','pressed-bad');
+  void keyEl.offsetWidth; // restart animation if same key pressed twice quickly
+  keyEl.classList.add(correct ? 'pressed' : 'pressed-bad');
+  setTimeout(()=> keyEl.classList.remove('pressed','pressed-bad'), 180);
+}
+
+function startGame(diff, hints){
+  clearAll();
+  const cfg = DIFFICULTY[diff];
+  state = {
+    diff, cfg,
+    words: [],           // {el, text, x, top, startTop, endTop, startTime, duration, id}
+    buffer: '',
+    targetId: null,
+    score: 0,
+    lives: 5,
+    level: 1,
+    wordsThisLevel: 0,
+    startedAt: performance.now(),
+    charsTyped: 0,
+    keystrokes: 0,
+    mistakes: 0,
+    speedMult: 1,
+    spawnGap: cfg.spawnGap,
+    fallTime: cfg.fallTime,
+    running: true,
+    hints
+  };
+  badge.textContent = diff.charAt(0).toUpperCase()+diff.slice(1);
+  badge.className = diff;
+  keyboardEl.classList.toggle('hidden', !hints);
+  startOverlay.classList.add('hidden');
+  endOverlay.classList.add('hidden');
+  updateHud();
+  setKeyboardHint(null);
+  ship.style.left = '50%';
+  mobileInput.value = '';
+  focusTypingInput();
+  tapHint.classList.add('hidden');
+
+  spawnWord();
+  spawnHandle = setInterval(spawnWord, state.spawnGap);
+  animHandle = requestAnimationFrame(tick);
+  clockHandle = setInterval(updateWpm, 500);
+}
+
+function clearAll(){
+  if(spawnHandle) clearInterval(spawnHandle);
+  if(clockHandle) clearInterval(clockHandle);
+  if(animHandle) cancelAnimationFrame(animHandle);
+  field.querySelectorAll('.word, .beam').forEach(el=>el.remove());
+}
+
+function fieldWidth(){ return field.clientWidth; }
+function fieldHeight(){ return field.clientHeight; }
+
+let wordCounter = 0;
+function spawnWord(){
+  if(!state || !state.running) return;
+  const list = state.cfg.list;
+  const text = list[Math.floor(Math.random()*list.length)];
+  const id = ++wordCounter;
+  const el = document.createElement('div');
+  el.className = 'word';
+  el.textContent = text;
+  field.appendChild(el);
+
+  const margin = 60;
+  const x = margin + Math.random()*(fieldWidth() - margin*2);
+  el.style.left = x + 'px';
+  el.style.top = '-30px';
+
+  const duration = state.fallTime / state.speedMult;
+
+  state.words.push({
+    el, text, x, id,
+    top: -30,
+    startTime: performance.now(),
+    duration
+  });
+}
+
+function tick(now){
+  if(!state || !state.running){ return; }
+  const groundY = fieldHeight() - 40;
+
+  for(let i = state.words.length-1; i>=0; i--){
+    const w = state.words[i];
+    const progress = (now - w.startTime) / w.duration;
+    const top = -30 + progress * (groundY + 30);
+    w.top = top;
+    w.el.style.top = top + 'px';
+
+    if(top >= groundY){
+      // word landed
+      loseLife(w);
+      i = i; // continue loop safely (removeWord splices)
+      removeWord(w, false);
+    }
+  }
+
+  animHandle = requestAnimationFrame(tick);
+}
+
+function currentTargetWord(){
+  if(state.targetId == null) return null;
+  return state.words.find(w=>w.id===state.targetId) || null;
+}
+
+function pickTarget(buffer){
+  // among words whose text starts with buffer, pick the one furthest down (most urgent)
+  const matches = state.words.filter(w=> w.text.startsWith(buffer));
+  if(matches.length===0) return null;
+  matches.sort((a,b)=> b.top - a.top);
+  return matches[0];
+}
+
+function renderWordHighlight(){
+  state.words.forEach(w=>{
+    w.el.classList.remove('targeted');
+    if(w.id === state.targetId){
+      w.el.classList.add('targeted');
+      const matchedLen = state.buffer.length;
+      const matched = w.text.slice(0, matchedLen);
+      const rest = w.text.slice(matchedLen);
+      w.el.innerHTML = '<span class="matched">'+matched+'</span>'+rest;
+    } else {
+      w.el.textContent = w.text;
+    }
+  });
+}
+
+function updateHud(){
+  statScore.textContent = state.score;
+  statLevel.textContent = state.level;
+  livesRow.querySelectorAll('.heart').forEach((h,i)=>{
+    h.classList.toggle('lost', i >= state.lives);
+  });
+}
+
+function updateWpm(){
+  if(!state || !state.running) return;
+  const minutes = (performance.now() - state.startedAt)/60000;
+  const wpm = minutes>0 ? Math.round((state.charsTyped/5)/minutes) : 0;
+  const acc = state.keystrokes>0 ? Math.round(100*(state.keystrokes-state.mistakes)/state.keystrokes) : 100;
+  statWpm.textContent = wpm;
+  statAcc.textContent = acc + '%';
+}
+
+function loseLife(w){
+  state.lives--;
+  updateHud();
+  if(state.lives<=0){
+    endGame();
+  }
+}
+
+function removeWord(w, exploded){
+  const idx = state.words.findIndex(x=>x.id===w.id);
+  if(idx>=0) state.words.splice(idx,1);
+  if(exploded){
+    w.el.classList.add('exploding');
+    setTimeout(()=> w.el.remove(), 220);
+  } else {
+    w.el.remove();
+  }
+  if(state.targetId === w.id){
+    state.targetId = null;
+    state.buffer = '';
+    bufferStrip.textContent = '';
+    setKeyboardHint(null);
+  }
+}
+
+function fireBeam(w){
+  const shipRect = ship.getBoundingClientRect();
+  const fieldRect = field.getBoundingClientRect();
+  const shipX = shipRect.left + shipRect.width/2 - fieldRect.left;
+  const shipY = fieldRect.height - 14;
+  const targetX = w.x;
+  const targetY = w.top + 14;
+
+  const dx = targetX - shipX;
+  const dy = targetY - shipY;
+  const length = Math.sqrt(dx*dx + dy*dy);
+  const angle = Math.atan2(dx, -dy) * (180/Math.PI);
+
+  const beam = document.createElement('div');
+  beam.className = 'beam';
+  beam.style.left = shipX + 'px';
+  beam.style.height = length + 'px';
+  beam.style.transform = 'rotate(' + angle + 'deg)';
+  field.appendChild(beam);
+  setTimeout(()=> beam.remove(), 200);
+}
+
+function moveShipToward(w){
+  const fieldRect = field.getBoundingClientRect();
+  const pct = Math.min(96, Math.max(4, (w.x / fieldRect.width) * 100));
+  ship.style.left = pct + '%';
+}
+
+function levelUp(){
+  state.wordsThisLevel++;
+  const threshold = 6;
+  if(state.wordsThisLevel >= threshold){
+    state.wordsThisLevel = 0;
+    state.level++;
+    state.speedMult += state.cfg.speedGrowth;
+    state.spawnGap = Math.max(650, state.spawnGap * 0.92);
+    clearInterval(spawnHandle);
+    spawnHandle = setInterval(spawnWord, state.spawnGap);
+  }
+}
+
+function handleChar(ch){
+  if(!state || !state.running) return;
+  state.keystrokes++;
+
+  let target = currentTargetWord();
+  let tentative = state.buffer + ch;
+
+  if(target && target.text.startsWith(tentative)){
+    state.buffer = tentative;
+    if(state.hints) flashKey(ch, true);
+  } else {
+    // try fresh match starting from this character alone
+    const fresh = pickTarget(ch);
+    if(fresh){
+      state.buffer = ch;
+      state.targetId = fresh.id;
+      target = fresh;
+      if(state.hints) flashKey(ch, true);
+    } else {
+      state.mistakes++;
+      state.buffer = '';
+      state.targetId = null;
+      bufferStrip.textContent = '';
+      setKeyboardHint(null);
+      if(state.hints) flashKey(ch, false);
+      renderWordHighlight();
+      return;
+    }
+  }
+
+  if(state.targetId == null){
+    const t = pickTarget(state.buffer);
+    if(t) state.targetId = t.id;
+  }
+
+  target = currentTargetWord();
+  state.charsTyped++;
+  bufferStrip.textContent = state.buffer;
+
+  if(target){
+    moveShipToward(target);
+    if(state.buffer === target.text){
+      // word complete!
+      fireBeam(target);
+      state.score++;
+      state.buffer = '';
+      state.targetId = null;
+      bufferStrip.textContent = '';
+      removeWord(target, true);
+      levelUp();
+      updateHud();
+      setKeyboardHint(null);
+    } else {
+      const nextChar = target.text[state.buffer.length];
+      if(state.hints) setKeyboardHint(nextChar);
+    }
+  }
+  renderWordHighlight();
+}
+
+function handleBackspace(){
+  if(!state || !state.running) return;
+  if(state.buffer.length>0){
+    state.buffer = state.buffer.slice(0,-1);
+    bufferStrip.textContent = state.buffer;
+    if(state.buffer.length===0){
+      state.targetId = null;
+      setKeyboardHint(null);
+    } else {
+      const target = currentTargetWord();
+      if(target && state.hints) setKeyboardHint(target.text[state.buffer.length]);
+    }
+    renderWordHighlight();
+  }
+}
+
+document.addEventListener('keydown', (e)=>{
+  if(!state || !state.running) return;
+  // If the hidden typing input is focused, its own 'input' event handles
+  // the keystroke (needed for mobile virtual keyboards) — skip here to
+  // avoid processing the same character twice.
+  if(document.activeElement === mobileInput) return;
+  if(e.key === 'Backspace'){ e.preventDefault(); handleBackspace(); return; }
+  if(e.key.length === 1 && /[a-zA-Z]/.test(e.key)){
+    handleChar(e.key.toLowerCase());
+  }
+});
+
+function endGame(){
+  state.running = false;
+  clearInterval(spawnHandle);
+  clearInterval(clockHandle);
+  cancelAnimationFrame(animHandle);
+  field.querySelectorAll('.word').forEach(el=>el.remove());
+  state.words = [];
+  mobileInput.blur();
+  tapHint.classList.add('hidden');
+
+  const minutes = (performance.now() - state.startedAt)/60000;
+  const wpm = minutes>0 ? Math.round((state.charsTyped/5)/minutes) : 0;
+  const acc = state.keystrokes>0 ? Math.round(100*(state.keystrokes-state.mistakes)/state.keystrokes) : 100;
+
+  document.getElementById('end-score').textContent = state.score;
+  document.getElementById('end-wpm').textContent = wpm;
+  document.getElementById('end-acc').textContent = acc + '%';
+  document.getElementById('end-level').textContent = state.level;
+  document.getElementById('end-sub').textContent =
+    state.score >= 20 ? "Excellent reflexes — you're barely looking at the keys." :
+    state.score >= 10 ? "Solid run. Keep going and the keyboard hints won't matter." :
+    "Good start — try again and watch your WPM climb.";
+
+  endOverlay.classList.remove('hidden');
+}
+
+})();
+</script>
+
+</body>
+</html>
